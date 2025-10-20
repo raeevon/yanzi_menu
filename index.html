@@ -189,21 +189,57 @@
       }));
 
       try {
-        // Важно: только Content-Type, чтобы не было preflight
-        const res = await fetch(WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(rows),
-        });
-
-        if (res.ok) {
-          tg?.showAlert?.('Заказ отправлен! Спасибо 🙌');
-          tg?.close?.();
-        } else {
-          const text = await res.text().catch(()=> '');
-          tg?.showAlert?.('Ошибка сервера: ' + text.slice(0, 200));
-          btn.disabled = false;
+        // 1) Попытка стандартной отправки JSON (может вызвать CORS preflight)
+        let res = null;
+        try {
+          res = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rows),
+          });
+          if (res.ok) {
+            tg?.showAlert?.('Заказ отправлен! Спасибо 🙌');
+            tg?.close?.();
+            return;
+          }
+        } catch (e) {
+          // Частая причина: блокировка CORS / preflight
+          console.warn('JSON POST failed', e);
         }
+
+        // 2) Попытка отправить как text/plain — это "simple" запрос и может обойти preflight
+        try {
+          res = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(rows),
+          });
+          if (res && res.ok) {
+            tg?.showAlert?.('Заказ отправлен (text/plain). Спасибо 🙌');
+            tg?.close?.();
+            return;
+          }
+        } catch (e) {
+          console.warn('text/plain POST failed', e);
+        }
+
+        // 3) Fallback: отправка данных боту через tg.sendData (обходит CORS).
+        // Бот на сервере должен принять эти данные и переслать их в n8n.
+        if (tg?.sendData) {
+          try {
+            tg.sendData(JSON.stringify({ fallback: true, rows }));
+            tg.showAlert('Данные отправлены боту (fallback).');
+            tg.close?.();
+            return;
+          } catch (e) {
+            console.warn('tg.sendData failed', e);
+          }
+        }
+
+        // 4) Если ничего не помогло — показать ответ сервера (если есть) или ошибку сети
+        const text = res ? await res.text().catch(()=> '') : '';
+        tg?.showAlert?.('Не удалось отправить заказ: ' + (text || 'Сервер/сеть недоступны'));
+        btn.disabled = false;
       } catch (e) {
         tg?.showAlert?.('Сеть недоступна: ' + (e?.message || e));
         btn.disabled = false;
