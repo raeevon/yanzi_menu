@@ -1,14 +1,14 @@
-# Минимальный образ Nginx
 FROM nginx:alpine
 
-# Удалим дефолтный конфиг и положим свой
-RUN rm -f /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Поставим curl для healthcheck (можно удалить блок HEALTHCHECK, если не нужен)
+RUN apk add --no-cache curl
 
-# Статические файлы
+# Кладём конфиг как ШАБЛОН — entrypoint заменит ${PORT} на значение из окружения Railway
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+# Статика
 COPY index.html /usr/share/nginx/html/index.html
-# Если будут ассеты — раскомментируй:
 # COPY assets/ /usr/share/nginx/html/assets/
 
-EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ || exit 1
+# Healthcheck: шлём запрос на локальный ${PORT}
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -fsS http://127.0.0.1:${PORT}/ || exit 1
