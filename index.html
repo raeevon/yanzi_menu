@@ -22,6 +22,8 @@
     .totals { display:flex; justify-content:space-between; margin:10px 0; color:#333; }
     .pill { background:#eee; border-radius:999px; padding:2px 8px; }
   </style>
+  <!-- SDK Telegram WebApp -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <h1>Форма выбора блюд Янцзы</h1>
@@ -38,19 +40,10 @@
   </div>
 
   <script>
-    // IMPORTANT: Telegram Web App API
-    // Telegram инжектит window.Telegram.WebApp в этот контекст
-    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    if (tg) {
-      tg.expand(); // развернуть на максимум
-      tg.MainButton.hide(); // используем свою кнопку
-      tg.setHeaderColor && tg.setHeaderColor('secondary_bg_color');
-      tg.setBackgroundColor && tg.setBackgroundColor('#fafafa');
-    }
+    // Telegram Web App API
+    const tg = window.Telegram?.WebApp || null;
 
     // === ДАННЫЕ МЕНЮ ===
-    // Пример. Расширяйте списки по образцу. Каждая позиция: уникальный id (число), code (Категория_Индекс), category, name.
-    // Ниже — только несколько первых примеров из каждой категории для краткости.
     const ITEMS = [
       // Салаты
       { id: 1001, code: "Салаты_0", category: "Салаты", name: "Ореховый" },
@@ -80,11 +73,10 @@
       { id: 8001, code: "Подарочные_сертификаты_0", category: "Подарочные сертификаты", name: "Подарочный сертификат" },
       { id: 8002, code: "Подарочные_сертификаты_1", category: "Подарочные сертификаты", name: "Подарочный сертификат 1000 р." },
     ];
-    // Подсказка: вы можете сгенерировать весь список программно из вашего исходного HTML (если нужно — накину скрипт-генератор).
 
     // === РЕНДЕР ===
     const state = new Map(); // key: id -> { ...item, qty }
-    ITEMS.forEach(it => state.set(it.id, {...it, qty: 0}));
+    ITEMS.forEach(it => state.set(it.id, { ...it, qty: 0 }));
 
     const byCategory = ITEMS.reduce((acc, it) => {
       (acc[it.category] ||= []).push(it);
@@ -136,7 +128,6 @@
 
         app.appendChild(fs);
       }
-
       updateTotals();
     }
 
@@ -159,28 +150,51 @@
     }
 
     // === SUBMIT ===
-    document.getElementById('submitBtn').addEventListener('click', () => {
+    const btn = document.getElementById('submitBtn');
+    btn.addEventListener('click', () => {
+      btn.disabled = true; // защита от даблклика
+
       const selected = [];
       state.forEach(v => { if (v.qty > 0) selected.push({ id: v.id, code: v.code, category: v.category, name: v.name, qty: v.qty }); });
 
       const payload = {
         source: "yanzi_webapp",
-        selected,                 // массив позиций
+        selected,                 // массив позиций (>0)
         selectedCount: selected.length,
-        totalQty: selected.reduce((a,b)=>a+b.qty,0),
+        totalQty: selected.reduce((a, b) => a + b.qty, 0),
         ts: Date.now()
       };
 
-      // Отправляем данные обратно в Telegram как web_app_data
       if (tg) {
-        tg.sendData(JSON.stringify(payload));
-        tg.close(); // закрыть WebApp
+        try {
+          tg.showAlert?.(`Отправляю ${selected.length} позиций`);
+          tg.sendData(JSON.stringify(payload));
+          tg.close();
+        } catch (e) {
+          btn.disabled = false;
+          tg.showAlert?.('Ошибка отправки: ' + (e?.message || e));
+        }
       } else {
-        alert('Данные (демо):\n' + JSON.stringify(payload, null, 2));
+        alert('Not in Telegram WebApp\n\n' + JSON.stringify(payload, null, 2));
+        btn.disabled = false;
       }
     });
 
+    // Рендерим и после этого сигналим Telegram’у, что всё готово
     render();
+
+    function afterRenderBoot() {
+      if (tg) {
+        tg.expand();
+        tg.MainButton.hide();
+        tg.setHeaderColor?.('secondary_bg_color');
+        tg.setBackgroundColor?.('#fafafa');
+        tg.ready(); // важный вызов для WebApp
+        // Для отладки можно посмотреть, какие данные Telegram видит:
+        console.log('initDataUnsafe:', tg.initDataUnsafe);
+      }
+    }
+    afterRenderBoot();
   </script>
 </body>
 </html>
