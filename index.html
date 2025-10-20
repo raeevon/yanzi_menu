@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Меню Янцзы — заказ</title>
   <style>
+    :root { color-scheme: light dark; }
     body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 16px; background:#fafafa; }
     h1 { margin: 0 0 12px; font-size: 20px; }
     .hint { color:#666; font-size: 12px; margin-bottom:12px; }
@@ -27,7 +28,9 @@
 </head>
 <body>
   <h1>Форма выбора блюд Янцзы</h1>
-  <div class="hint">Нажимайте «+ / –» чтобы задать количество. «Отправить заказ» отправит только позиции &gt; 0.</div>
+  <div class="hint">
+    Нажимайте «+ / –» чтобы задать количество. «Сделать заказ» отправит только позиции &gt; 0 прямо в вашу Data Table.
+  </div>
 
   <div id="app"></div>
 
@@ -36,46 +39,50 @@
       <div>Выбрано позиций: <span id="selCount" class="pill">0</span></div>
       <div>Всего шт.: <span id="sumQty" class="pill">0</span></div>
     </div>
-    <button id="submitBtn" class="primary" disabled>Отправить заказ</button>
+    <button id="submitBtn" class="primary" disabled>Сделать заказ</button>
   </div>
 
   <script>
-    // Telegram Web App API
+    // === НАСТРОЙКА: URL вебхука n8n ===
+    // Пример: https://your-n8n-host/webhook/yanzi/order
+    const WEBHOOK_URL = 'https://YOUR_N8N_HOST/webhook/yanzi/order'; // <- ЗАМЕНИТЕ
+
+    // === Telegram Web App API ===
     const tg = window.Telegram?.WebApp || null;
 
-    // === ДАННЫЕ МЕНЮ ===
+    // === МЕНЮ (пример; расширяйте по аналогии) ===
     const ITEMS = [
       // Салаты
-      { id: 1001, code: "Салаты_0", category: "Салаты", name: "Ореховый" },
-      { id: 1002, code: "Салаты_1", category: "Салаты", name: "Тайский" },
-      { id: 1003, code: "Салаты_2", category: "Салаты", name: "Салат «Ен Янь»" },
+      { id: 1001, category: "Салаты", name: "Ореховый" },
+      { id: 1002, category: "Салаты", name: "Тайский" },
+      { id: 1003, category: "Салаты", name: "Салат «Ен Янь»" },
       // Горячее
-      { id: 2001, code: "Горячее_0", category: "Горячее", name: "Лю Жоу Тан" },
-      { id: 2002, code: "Горячее_1", category: "Горячее", name: "Кабан и желуди" },
-      { id: 2003, code: "Горячее_2", category: "Горячее", name: "Каштаны с курицей" },
+      { id: 2001, category: "Горячее", name: "Лю Жоу Тан" },
+      { id: 2002, category: "Горячее", name: "Кабан и желуди" },
+      { id: 2003, category: "Горячее", name: "Каштаны с курицей" },
       // Супы
-      { id: 3001, code: "Супы_0", category: "Супы", name: "ТАН ФЕН" },
-      { id: 3002, code: "Супы_1", category: "Супы", name: "Том Ям с морепродуктами" },
-      { id: 3003, code: "Супы_2", category: "Супы", name: "Том Ям с курицей" },
+      { id: 3001, category: "Супы", name: "ТАН ФЕН" },
+      { id: 3002, category: "Супы", name: "Том Ям с морепродуктами" },
+      { id: 3003, category: "Супы", name: "Том Ям с курицей" },
       // Десерты
-      { id: 4001, code: "Десерты_0", category: "Десерты", name: "Чизкейк" },
-      { id: 4002, code: "Десерты_1", category: "Десерты", name: "Пирог вишневый" },
+      { id: 4001, category: "Десерты", name: "Чизкейк" },
+      { id: 4002, category: "Десерты", name: "Пирог вишневый" },
       // Пицца
-      { id: 5001, code: "Пицца_0", category: "Пицца", name: "Пицца «Маргарита классическая»" },
-      { id: 5002, code: "Пицца_1", category: "Пицца", name: "Пицца с языком" },
+      { id: 5001, category: "Пицца", name: "Пицца «Маргарита классическая»" },
+      { id: 5002, category: "Пицца", name: "Пицца с языком" },
       // Напитки
-      { id: 6001, code: "Напитки_0", category: "Напитки", name: "Вода" },
-      { id: 6002, code: "Напитки_1", category: "Напитки", name: "Морс натуральный в ассортименте" },
+      { id: 6001, category: "Напитки", name: "Вода" },
+      { id: 6002, category: "Напитки", name: "Морс натуральный в ассортименте" },
       // Бизнес-ланч
-      { id: 7001, code: "Бизнес-ланч_0", category: "Бизнес-ланч", name: "Бизнес ланч №1" },
-      { id: 7002, code: "Бизнес-ланч_1", category: "Бизнес-ланч", name: "Бизнес ланч №2" },
+      { id: 7001, category: "Бизнес-ланч", name: "Бизнес ланч №1" },
+      { id: 7002, category: "Бизнес-ланч", name: "Бизнес ланч №2" },
       // Подарочные сертификаты
-      { id: 8001, code: "Подарочные_сертификаты_0", category: "Подарочные сертификаты", name: "Подарочный сертификат" },
-      { id: 8002, code: "Подарочные_сертификаты_1", category: "Подарочные сертификаты", name: "Подарочный сертификат 1000 р." },
+      { id: 8001, category: "Подарочные сертификаты", name: "Подарочный сертификат" },
+      { id: 8002, category: "Подарочные сертификаты", name: "Подарочный сертификат 1000 р." },
     ];
 
-    // === РЕНДЕР ===
-    const state = new Map(); // key: id -> { ...item, qty }
+    // === СОСТОЯНИЕ ===
+    const state = new Map(); // id -> { ...item, qty }
     ITEMS.forEach(it => state.set(it.id, { ...it, qty: 0 }));
 
     const byCategory = ITEMS.reduce((acc, it) => {
@@ -149,52 +156,68 @@
       document.getElementById('submitBtn').disabled = sel === 0;
     }
 
-    // === SUBMIT ===
+    // === ОТПРАВКА В N8N DATA TABLE ЧЕРЕЗ WEBHOOK ===
     const btn = document.getElementById('submitBtn');
-    btn.addEventListener('click', () => {
-      btn.disabled = true; // защита от даблклика
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
 
+      // Собираем выбранные позиции
       const selected = [];
-      state.forEach(v => { if (v.qty > 0) selected.push({ id: v.id, code: v.code, category: v.category, name: v.name, qty: v.qty }); });
+      state.forEach(v => { if (v.qty > 0) selected.push({ id: v.id, name: v.name, qty: v.qty }); });
+      if (!selected.length) { btn.disabled = false; return; }
 
-      const payload = {
-        source: "yanzi_webapp",
-        selected,                 // массив позиций (>0)
-        selectedCount: selected.length,
-        totalQty: selected.reduce((a, b) => a + b.qty, 0),
-        ts: Date.now()
-      };
+      // Достаём данные пользователя из WebApp
+      const u = tg?.initDataUnsafe?.user || {};
+      const user_id = u.id;
+      const user_full_name = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
 
-      if (tg) {
-        try {
-          tg.showAlert?.(`Отправляю ${selected.length} позиций`);
-          tg.sendData(JSON.stringify(payload));
-          tg.close();
-        } catch (e) {
+      if (!user_id) {
+        // Если открыли не из Telegram, просто покажем предварительный просмотр
+        alert('Откройте ссылку из Telegram бота. Сейчас отправка в Data Table отключена.\n\n' +
+              JSON.stringify({ user_id, user_full_name, selected }, null, 2));
+        btn.disabled = false;
+        return;
+      }
+
+      // Готовим строки именно под Data Table:
+      // [{ user_id, user_full_name, item_name, qty }, ...]
+      const rows = selected.map(it => ({
+        user_id,
+        user_full_name,
+        item_name: it.name,
+        qty: Number(it.qty),
+      }));
+
+      try {
+        // Важно: только Content-Type, чтобы не было preflight
+        const res = await fetch(WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rows),
+        });
+
+        if (res.ok) {
+          tg?.showAlert?.('Заказ отправлен! Спасибо 🙌');
+          tg?.close?.();
+        } else {
+          const text = await res.text().catch(()=> '');
+          tg?.showAlert?.('Ошибка сервера: ' + text.slice(0, 200));
           btn.disabled = false;
-          tg.showAlert?.('Ошибка отправки: ' + (e?.message || e));
         }
-      } else {
-        alert('Not in Telegram WebApp\n\n' + JSON.stringify(payload, null, 2));
+      } catch (e) {
+        tg?.showAlert?.('Сеть недоступна: ' + (e?.message || e));
         btn.disabled = false;
       }
     });
 
-    // Рендерим и после этого сигналим Telegram’у, что всё готово
+    // Инициализация WebApp UI
     render();
-
-    function afterRenderBoot() {
-      if (tg) {
-        tg.expand();
-        tg.MainButton.hide();
-        tg.setHeaderColor?.('secondary_bg_color');
-        tg.setBackgroundColor?.('#fafafa');
-        tg.ready(); // важный вызов для WebApp
-        // Для отладки можно посмотреть, какие данные Telegram видит:
-        console.log('initDataUnsafe:', tg.initDataUnsafe);
-      }
+    if (tg) {
+      tg.expand?.();
+      tg.setHeaderColor?.('secondary_bg_color');
+      tg.setBackgroundColor?.('#fafafa');
+      tg.ready?.();
     }
-    afterRenderBoot();
   </script>
 </body>
 </html>
